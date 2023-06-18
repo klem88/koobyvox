@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>KoobyVox Color</title>
+
+<style>
+
+body{
+	background: black;
+}
+</style>
+
+<body>
+
+<script src="https://d3js.org/d3.v4.min.js"></script>
+
+<script>
+
+var quality = 300;
+var url = 'http://static.cyberlibris.fr/books_upload/' + quality + 'pix/';
+
+
+var margin = {top: 40, right: 40, bottom: 40, left: 40};
+var width = Math.max(960, window.innerWidth - margin.left - margin.right);
+var height = Math.max(500, window.innerHeight - margin.top - margin.bottom);
+
+var colorrectheight = 100;
+var canvasbackgroundcolor = 'black';
+
+var nbcolors = 20;
+var rectcolordata = d3.range(nbcolors);
+var mouseX = 0;
+
+var numberofselectedcovers = 40;
+var selectedcovers = [];
+
+var distorsionrange = [0, 6];
+var distorsionin = d3.interpolateNumber(distorsionrange[0], distorsionrange[1]);
+var distorsionout = d3.interpolateNumber(distorsionrange[1], distorsionrange[0]);
+var distorsion = 0;
+
+
+var rectcolorscale = d3
+	//.scaleLinear()
+	.scaleSequential()
+	.interpolator(d3.interpolateRainbow)
+	/*.interpolate(d3.interpolateHsl)
+	.range([d3.rgb(0,0,0), d3.rgb(256,256,256)])*/
+	.domain([0, nbcolors]);
+
+
+var svg = d3.select("body")
+	.append('svg')
+	.attr("width", width)
+	.attr("height", colorrectheight);
+
+var gcolors = svg
+	.append('g')
+	.attr('id', 'gcolors');
+
+var canvas = d3
+	.select('body')
+	.append('canvas')
+	.attr('id', 'accordion1')
+	.attr('width', width)
+	.attr('height', quality);
+
+var context = canvas.node().getContext('2d');
+
+gcolors
+	.selectAll('rects')
+	.data(rectcolordata)
+	.enter()
+	.append('rect')
+	.attr('x', function(d){ return d * width / nbcolors; })
+	.attr('y', 0)
+	.attr('width', width / nbcolors)
+	.attr('height', colorrectheight)
+	.attr('fill', function(d){ return rectcolorscale(d) })
+	.on('click', function(d){ 
+
+		var temp = rectcolorscale(d).split('(')[1].split(')')[0].split(',');
+		rgbselected = {'r' : temp[0] / 256, 'g' : temp[1] / 256, 'b' : temp[2] / 256};
+		canvasbackgroundcolor = rectcolorscale(d);
+		console.log(rgbselected);
+		
+		eucldist = [];
+		for (i = 0; i < dataset.docid.length; i++) {
+			
+			var temp = dataset.weight1[i] / 100 * Math.sqrt(Math.pow(rgbselected.r - dataset.r1[i], 2) + Math.pow(rgbselected.g - dataset.g1[i], 2) + Math.pow(rgbselected.b - dataset.b1[i], 2)) + 
+			dataset.weight2[i] / 100 * Math.sqrt(Math.pow(rgbselected.r - dataset.r2[i], 2) + Math.pow(rgbselected.g - dataset.g2[i], 2) + Math.pow(rgbselected.b - dataset.b2[i], 2)) + 
+			dataset.weight3[i] / 100 * Math.sqrt(Math.pow(rgbselected.r - dataset.r3[i], 2) + Math.pow(rgbselected.g - dataset.g3[i], 2) + Math.pow(rgbselected.b - dataset.b3[i], 2));
+
+			eucldist.push({'cover' : dataset.coverimg[i], 'dist' : temp});
+		};
+		selectedcovers = eucldist.sort(function(a, b){ return a.dist - b.dist; }).slice(0, numberofselectedcovers);
+		//console.log(selectedcovers);
+		
+		context.clearRect(0, 0, width, height);
+		distorsion = 0;
+		canvas.style('background-color', canvasbackgroundcolor);
+		drawselectedcovers(selectedcovers);
+	});
+
+d3.json('koobyvoximgcol.json', function(err, data) {
+	dataset = data;
+	//console.log(dataset);
+	
+	/*data.docid.map(function(d, i){ 
+		dataset[d] = {
+			'r1' : data.R1[i],
+			'g1' : data.G1[i],
+			'b1' : data.B1[i],
+			'r2' : data.R2[i],
+			'g2' : data.G2[i],
+			'b2' : data.B2[i],
+			'r3' : data.R3[i],
+			'g3' : data.G3[i],
+			'b3' : data.B3[i],
+			'weight1' : data.color1[i],
+			'weight2' : data.color2[i],
+			'weight3' : data.color3[i],
+			'cover' : data.CoverImg[i]
+		};
+	})*/
+});
+
+
+
+function drawselectedcovers(selectedcovers){
+	selectedcovers.map(function(d, i){
+		var a = fisheye(i * width / selectedcovers.length);
+		var b = fisheye((i + 1) * width / selectedcovers.length);
+		var height = quality;
+		
+		var cover = new Image();
+		cover.src = url + d.cover;
+
+		cover.onload = function(){
+			var width = quality * cover.width / cover.height;
+
+			context.save();
+			context.beginPath();
+			context.rect(a, 0, b - a, height);
+			context.lineWidth = 3;
+			context.stroke();
+			context.clip();
+			context.drawImage(cover, a - ((width - (b - a)) / 2), 0, width, height);
+			context.restore();
+		};
+	});
+};
+
+//MOUSEOVER EVENT
+/*canvas.node().addEventListener("mousemove", function(e){
+	mouseX = e.layerX;
+	console.log(mouseX);
+	distorsion = 5;
+	drawselectedcovers(selectedcovers);
+});*/
+
+canvas
+	.on('mouseenter', function(){
+		d3
+			.transition()
+			.duration(500)
+			.tween('', function(){
+				return function(t){
+					distorsion = distorsionin(t);
+					drawselectedcovers(selectedcovers);
+				}
+			});
+	})
+	.on('mousemove', function(){
+		mouseX = d3.mouse(this)[0];
+		drawselectedcovers(selectedcovers);
+	})
+	.on('mouseleave', function(){
+		d3
+			.transition()
+			.duration(500)
+			.tween('', function(){
+				return function(t){
+					distorsion = distorsionout(t);
+					drawselectedcovers(selectedcovers);
+				}
+			});
+	});
+
+
+function fisheye(x){
+	var left = x < mouseX;
+
+	var min = 0;
+	var max = width;
+
+	var offset = left ? mouseX - min : max - mouseX;
+	if (offset == 0) offset = max - min;
+	return (left ? -1 : 1) * offset * (distorsion + 1) / (distorsion + (offset / Math.abs(x - mouseX))) + mouseX;
+}
+
+</script>
+</body>
